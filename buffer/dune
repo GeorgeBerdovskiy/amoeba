@@ -1,2 +1,3 @@
 (library
- (name buffer))
+ (name buffer)
+ (libraries page))
