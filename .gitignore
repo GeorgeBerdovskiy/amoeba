@@ -1,0 +1,23 @@
+# Dune / OPAM
+_build/
+_opam/
+*.install
+.merlin
+
+# Compiler artifacts
+*.cmi
+*.cmo
+*.cmx
+*.cma
+*.cmxa
+*.cmxs
+*.cmt
+*.cmti
+*.annot
+*.a
+*.o
+*.byte
+*.native
+
+# Apple
+.DS_Store
