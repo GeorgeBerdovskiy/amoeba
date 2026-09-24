@@ -6,7 +6,7 @@ module type S = sig
   val get : t -> int64 -> page option
 end
 
-module Basic (P: Page.S) : S with type page = P.t = struct
+module Basic (P : Page.S) : S with type page = P.t = struct
   type page = P.t
   type t = page option array
 

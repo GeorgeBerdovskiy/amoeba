@@ -3,12 +3,12 @@ module type S = sig
   type key
   type rid
 
-  val create: unit -> t
-  val lookup: t -> key -> rid list
+  val create : unit -> t
+  val lookup : t -> key -> rid list
 end
 
 module Basic : S = struct
-  module M = Map.Make(Int)
+  module M = Map.Make (Int)
 
   type key = int
   type rid = int * int
@@ -17,7 +17,5 @@ module Basic : S = struct
   let create () = M.empty
 
   let lookup t key =
-    match M.find_opt key t with
-    | None -> []
-    | Some rids -> rids
+    match M.find_opt key t with None -> [] | Some rids -> rids
 end

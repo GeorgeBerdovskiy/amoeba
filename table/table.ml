@@ -1,6 +1,5 @@
 module type S = sig
   type t
-
   type key
   type tuple
 
