@@ -12,11 +12,11 @@ end
 (** Slotted page, native endian.
 
     {v
-      0            2              4
-      +------------+--------------+---------------------------+
-      | slot_end   | record_start | slot | slot | → ← records |
-      | u16        | u16          | u16  | u16  |             |
-      +------------+--------------+---------------------------+
+      0            2              4           5
+      +------------+--------------+-----------+------+------+-------------+
+      | slot_end   | record_start | dirty_bit | slot | slot | → ← records |
+      | u16        | u16          | u8        | u16  | u16  |             |
+      +------------+--------------+-----------+------+------+-------------+
     v}
 
     Field [slot_end] is the next free slot. Field [record_start] is the bottom
@@ -26,18 +26,23 @@ module Basic (R : Record.S) : S with type record = R.t = struct
   type record = R.t
   type slot = int
 
-  let u16 = 2
+  let u16 = 2 (* Bytes *)
+  let u8 = 1 (* Bytes *)
   let slot_end_at = 0
   let record_start_at = u16
-  let header_size = u16 + u16
+  let dirty_bit_at = u16 + u16
+  let header_size = u16 + u16 + u8
   let get_u16 page at = Bytes.get_uint16_ne page at
   let set_u16 page at v = Bytes.set_uint16_ne page at v
-  let is_dirty _ = false
+  let get_u8 page at = Bytes.get_uint8 page at
+  let set_u8 page at v = Bytes.set_uint8 page at v
+  let is_dirty page = get_u8 page dirty_bit_at != 0
 
   let create size =
     let page = Bytes.make size '\000' in
     set_u16 page slot_end_at header_size;
     set_u16 page record_start_at size;
+    set_u8 page dirty_bit_at 1;
     page
 
   let slot_end page = get_u16 page slot_end_at
@@ -56,7 +61,7 @@ module Basic (R : Record.S) : S with type record = R.t = struct
       set_u16 page record_start_at record_at;
       Some (slot_at, record_at)
 
-  (** Try to insert a `record` into the `page`. Returns the chosen slot, or
+  (** Try to insert a [record] into the [page]. Returns the chosen slot, or
       [None] if the page has insufficient space. *)
   let insert page record =
     let n = R.size record in
@@ -64,6 +69,7 @@ module Basic (R : Record.S) : S with type record = R.t = struct
     | None -> None
     | Some (slot_at, record_at) ->
         set_u16 page slot_at record_at;
+        set_u8 page dirty_bit_at 1;
         Bytes.blit (R.to_bytes record) 0 page record_at n;
         Some slot_at
 
