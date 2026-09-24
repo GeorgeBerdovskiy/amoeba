@@ -9,42 +9,63 @@ module type S = sig
   val get : slot -> record option
 end
 
+(** Slotted page, native endian.
+
+    {v
+      0            2              4
+      +------------+--------------+---------------------------+
+      | slot_end   | record_start | slot | slot | → ← records |
+      | u16        | u16          | u16  | u16  |             |
+      +------------+--------------+---------------------------+
+    v}
+
+    Field [slot_end] is the next free slot. Field [record_start] is the bottom
+    of the record region. *)
 module Basic (R : Record.S) : S with type record = R.t = struct
   type t = Bytes.t
   type record = R.t
   type slot = int
 
-  (* How many bytes does a field communicating offset take? *)
-  let offset_field_size = 2
-  let create size = Bytes.create size
+  let u16 = 2
+  let slot_end_at = 0
+  let record_start_at = u16
+  let header_size = u16 + u16
+  let get_u16 page at = Bytes.get_uint16_ne page at
+  let set_u16 page at v = Bytes.set_uint16_ne page at v
   let is_dirty _ = false
 
-  (* Byte offset of the next available slot. *)
-  let slot_end_offset page = Bytes.get_uint16_ne page 0
+  let create size =
+    let page = Bytes.make size '\000' in
+    set_u16 page slot_end_at header_size;
+    set_u16 page record_start_at size;
+    page
 
-  (* Byte offset of the last inserted record.  *)
-  let record_start_offset page = Bytes.get_uint16_ne page 2
+  let slot_end page = get_u16 page slot_end_at
+  let record_start page = get_u16 page record_start_at
 
-  (* How many bytes of space are available for records *)
-  let available_space page =
-    record_start_offset page - slot_end_offset page - offset_field_size
+  (* How many bytes of space are available for records? *)
+  let available_space page = record_start page - slot_end page - u16
 
+  (** Try to reserve a chunk of [size] bytes for a record. *)
   let reserve page size =
-    if available_space page >= size then
-      let new_slot_offset = slot_end_offset page + 2 in
-      let new_record_offset = record_start_offset page - size in
-      let _ = Bytes.set_int16_ne page 0 new_slot_offset in
-      let _ = Bytes.set_int16_ne page 2 new_record_offset in
-      Some (new_slot_offset, new_record_offset)
-    else None
+    if available_space page < size then None
+    else
+      let slot_at = slot_end page in
+      let record_at = record_start page - size in
+      set_u16 page slot_end_at (slot_at + u16);
+      set_u16 page record_start_at record_at;
+      Some (slot_at, record_at)
 
+  (** Try to insert a `record` into the `page`. Returns the chosen slot, or
+      [None] if the page has insufficient space. *)
   let insert page record =
-    let record_size = R.size record in
-    match reserve page record_size with
-    | Some (slot, offset) ->
-        let _ = Bytes.blit (R.to_bytes record) 0 page offset record_size in
-        Some slot
+    let n = R.size record in
+    match reserve page n with
     | None -> None
+    | Some (slot_at, record_at) ->
+        set_u16 page slot_at record_at;
+        Bytes.blit (R.to_bytes record) 0 page record_at n;
+        Some slot_at
 
   let get _ = None
 end
