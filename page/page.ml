@@ -22,7 +22,9 @@ end
     Field [slot_end] is the next free slot. Field [record_start] is the bottom
     of the record region. *)
 module Basic (R : Record.S) : S with type record = R.t = struct
-  type t = Bytes.t
+  module Chunk = Core.Chunk
+
+  type t = Chunk.t
   type record = R.t
   type slot = int
 
@@ -32,21 +34,17 @@ module Basic (R : Record.S) : S with type record = R.t = struct
   let record_start_at = u16
   let dirty_bit_at = u16 + u16
   let header_size = u16 + u16 + u8
-  let get_u16 page at = Bytes.get_uint16_ne page at
-  let set_u16 page at v = Bytes.set_uint16_ne page at v
-  let get_u8 page at = Bytes.get_uint8 page at
-  let set_u8 page at v = Bytes.set_uint8 page at v
-  let is_dirty page = get_u8 page dirty_bit_at != 0
+  let is_dirty page = Chunk.get_u8 page dirty_bit_at != 0
 
   let create size =
-    let page = Bytes.make size '\000' in
-    set_u16 page slot_end_at header_size;
-    set_u16 page record_start_at size;
-    set_u8 page dirty_bit_at 1;
+    let page = Chunk.make size '\000' in
+    Chunk.set_u16 page slot_end_at header_size;
+    Chunk.set_u16 page record_start_at size;
+    Chunk.set_u8 page dirty_bit_at 1;
     page
 
-  let slot_end page = get_u16 page slot_end_at
-  let record_start page = get_u16 page record_start_at
+  let slot_end page = Chunk.get_u16 page slot_end_at
+  let record_start page = Chunk.get_u16 page record_start_at
 
   (* How many bytes of space are available for records? *)
   let available_space page = record_start page - slot_end page - u16
@@ -57,8 +55,8 @@ module Basic (R : Record.S) : S with type record = R.t = struct
     else
       let slot_at = slot_end page in
       let record_at = record_start page - size in
-      set_u16 page slot_end_at (slot_at + u16);
-      set_u16 page record_start_at record_at;
+      Chunk.set_u16 page slot_end_at (slot_at + u16);
+      Chunk.set_u16 page record_start_at record_at;
       Some (slot_at, record_at)
 
   (** Try to insert a [record] into the [page]. Returns the chosen slot, or
@@ -68,9 +66,9 @@ module Basic (R : Record.S) : S with type record = R.t = struct
     match reserve page n with
     | None -> None
     | Some (slot_at, record_at) ->
-        set_u16 page slot_at record_at;
-        set_u8 page dirty_bit_at 1;
-        Bytes.blit (R.to_bytes record) 0 page record_at n;
+        Chunk.set_u16 page slot_at record_at;
+        Chunk.set_u8 page dirty_bit_at 1;
+        Bytes.blit (R.to_bytes record) 0 (Chunk.to_bytes page) record_at n;
         Some slot_at
 
   let get _ = None
